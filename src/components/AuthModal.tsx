@@ -12,9 +12,12 @@ import {
 } from "react-native"
 import {
   AlertCircle,
+  ArrowLeft,
   CheckCircle2,
+  KeyRound,
   LockKeyhole,
   Mail,
+  ShieldCheck,
   Sparkles,
   UserPlus,
   X,
@@ -50,6 +53,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [success, setSuccess] = useState("")
   const [loading, setLoading] = useState(false)
 
+  // Password Recovery Demo States
+  const [recoverStep, setRecoverStep] = useState<1 | 2 | 3>(1)
+  const [otpCode, setOtpCode] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+
   const handleSubmit = async () => {
     setError("")
     setSuccess("")
@@ -60,7 +69,45 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return
     }
 
-    if (mode !== "recover" && password.length < 4) {
+    if (mode === "recover") {
+      setLoading(true)
+      setTimeout(() => {
+        setLoading(false)
+        if (recoverStep === 1) {
+          setRecoverStep(2)
+          setSuccess("Verification code sent to " + cleanEmail + "! (Demo OTP: 8492)")
+        } else if (recoverStep === 2) {
+          if (otpCode.trim() !== "8492" && otpCode.trim().length !== 4) {
+            setError("Invalid code. Please enter the 4-digit code (8492).")
+            return
+          }
+          setRecoverStep(3)
+          setSuccess("Code verified successfully! Now enter your new password.")
+        } else if (recoverStep === 3) {
+          if (newPassword.length < 4) {
+            setError("New password must be at least 4 characters.")
+            return
+          }
+          if (newPassword !== confirmPassword) {
+            setError("Passwords do not match. Please try again.")
+            return
+          }
+          setPassword(newPassword)
+          setSuccess("Password updated successfully! Switching to sign in...")
+          setTimeout(() => {
+            setMode("login")
+            setRecoverStep(1)
+            setOtpCode("")
+            setNewPassword("")
+            setConfirmPassword("")
+            setSuccess("")
+          }, 1500)
+        }
+      }, 600)
+      return
+    }
+
+    if (password.length < 4) {
       setError("Password must contain at least 4 characters.")
       return
     }
@@ -72,20 +119,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     setLoading(true)
     try {
-      if (mode === "recover") {
-        setSuccess("Password reset instructions sent to your email!")
-        setTimeout(() => {
-          setMode("login")
-          setSuccess("")
-        }, 2000)
-      } else {
-        await onAuthenticate({
-          email: cleanEmail,
-          password,
-          name: name.trim(),
-          mode,
-        })
-      }
+      await onAuthenticate({
+        email: cleanEmail,
+        password,
+        name: name.trim(),
+        mode,
+      })
     } catch (err: any) {
       setError(err?.message || "Authentication failed. Please check credentials.")
     } finally {
@@ -123,11 +162,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {mode === "register"
                 ? "Create your\naccount."
                 : mode === "recover"
-                ? "Account\nrecovery."
+                ? recoverStep === 1
+                  ? "Recover your\naccount."
+                  : recoverStep === 2
+                  ? "Verify OTP\ncode."
+                  : "Set your new\npassword."
                 : "Welcome back,\nplease sign in."}
             </Text>
             <Text style={styles.heroSub}>
-              Access your saved favorites, track orders, and manage your account seamlessly.
+              {mode === "recover"
+                ? "Secure password recovery demo with verification code & instant password update."
+                : "Access your saved favorites, track orders, and manage your account seamlessly."}
             </Text>
           </View>
 
@@ -150,7 +195,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {mode === "register"
                 ? "NEW ACCOUNT"
                 : mode === "recover"
-                ? "PASSWORD RESET"
+                ? `PASSWORD RECOVERY • STEP ${recoverStep} OF 3`
                 : "CREDENTIALS"}
             </Text>
 
@@ -158,7 +203,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               {mode === "register"
                 ? "Create Account"
                 : mode === "recover"
-                ? "Reset Password"
+                ? recoverStep === 1
+                  ? "Find Account"
+                  : recoverStep === 2
+                  ? "Enter Verification Code"
+                  : "New Password"
                 : "Sign In"}
             </Text>
 
@@ -178,22 +227,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </View>
             )}
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Email address</Text>
-              <View style={styles.inputContainer}>
-                <Mail size={18} color={colors.textMuted} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="name@example.com"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={email}
-                  onChangeText={setEmail}
-                />
+            {/* Email Field (Visible in login, register, and recover Step 1) */}
+            {(mode !== "recover" || recoverStep === 1) && (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>Email address</Text>
+                <View style={styles.inputContainer}>
+                  <Mail size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="name@example.com"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={setEmail}
+                  />
+                </View>
               </View>
-            </View>
+            )}
 
+            {/* Password Field (Visible in login and register) */}
             {mode !== "recover" && (
               <View style={styles.fieldGroup}>
                 <Text style={styles.label}>Password</Text>
@@ -209,6 +262,63 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   />
                 </View>
               </View>
+            )}
+
+            {/* Password Recovery Step 2: OTP Code */}
+            {mode === "recover" && recoverStep === 2 && (
+              <View style={styles.fieldGroup}>
+                <Text style={styles.label}>4-Digit Verification Code</Text>
+                <View style={styles.inputContainer}>
+                  <ShieldCheck size={18} color={colors.textMuted} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter code (e.g. 8492)"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={otpCode}
+                    onChangeText={setOtpCode}
+                  />
+                </View>
+                <Text style={styles.hintText}>
+                  💡 Demo Hint: Type code <Text style={{ fontWeight: "800" }}>8492</Text> to verify.
+                </Text>
+              </View>
+            )}
+
+            {/* Password Recovery Step 3: New Password */}
+            {mode === "recover" && recoverStep === 3 && (
+              <>
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>New Password</Text>
+                  <View style={styles.inputContainer}>
+                    <KeyRound size={18} color={colors.textMuted} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter new password"
+                      placeholderTextColor={colors.textMuted}
+                      secureTextEntry
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Confirm New Password</Text>
+                  <View style={styles.inputContainer}>
+                    <LockKeyhole size={18} color={colors.textMuted} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Confirm new password"
+                      placeholderTextColor={colors.textMuted}
+                      secureTextEntry
+                      value={confirmPassword}
+                      onChangeText={setConfirmPassword}
+                    />
+                  </View>
+                </View>
+              </>
             )}
 
             {error ? (
@@ -231,10 +341,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   setError("")
                   setSuccess("")
                   setMode("recover")
+                  setRecoverStep(1)
                 }}
                 style={styles.forgotButton}
               >
                 <Text style={styles.forgotText}>Forgot password?</Text>
+              </Pressable>
+            )}
+
+            {mode === "recover" && (
+              <Pressable
+                onPress={() => {
+                  setError("")
+                  setSuccess("")
+                  setMode("login")
+                  setRecoverStep(1)
+                }}
+                style={styles.backToLoginButton}
+              >
+                <ArrowLeft size={14} color={colors.primary} />
+                <Text style={styles.backToLoginText}>Back to Sign In</Text>
               </Pressable>
             )}
 
@@ -248,7 +374,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               ) : (
                 <Text style={styles.submitButtonText}>
                   {mode === "recover"
-                    ? "Send reset instructions"
+                    ? recoverStep === 1
+                      ? "Send Verification Code (OTP)"
+                      : recoverStep === 2
+                      ? "Verify Code"
+                      : "Save New Password"
                     : mode === "register"
                     ? "Create account"
                     : "Sign in"}
@@ -256,24 +386,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               )}
             </Pressable>
 
-            <View style={styles.switchModeRow}>
-              <Text style={styles.switchModeText}>
-                {mode === "register"
-                  ? "Already have an account?"
-                  : "New to D&G Market?"}
-              </Text>
-              <Pressable
-                onPress={() => {
-                  setError("")
-                  setSuccess("")
-                  setMode(mode === "register" ? "login" : "register")
-                }}
-              >
-                <Text style={styles.switchModeLink}>
-                  {mode === "register" ? " Sign in" : " Create account"}
+            {mode !== "recover" && (
+              <View style={styles.switchModeRow}>
+                <Text style={styles.switchModeText}>
+                  {mode === "register"
+                    ? "Already have an account?"
+                    : "New to D&G Market?"}
                 </Text>
-              </Pressable>
-            </View>
+                <Pressable
+                  onPress={() => {
+                    setError("")
+                    setSuccess("")
+                    setMode(mode === "register" ? "login" : "register")
+                  }}
+                >
+                  <Text style={styles.switchModeLink}>
+                    {mode === "register" ? " Sign in" : " Create account"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
           </ScrollView>
         </View>
       </SafeAreaView>
@@ -462,6 +594,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     color: colors.accent,
+  },
+  hintText: {
+    fontSize: 11,
+    color: colors.accent,
+    marginTop: 6,
+    fontWeight: "600",
+  },
+  backToLoginButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  backToLoginText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.primary,
   },
   submitButton: {
     height: 50,

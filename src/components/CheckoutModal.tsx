@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import {
   Modal,
   StyleSheet,
@@ -19,10 +19,11 @@ import {
   MapPin,
   ShieldCheck,
   Smartphone,
+  User,
   Wallet,
   X,
 } from "lucide-react-native"
-import { PaymentMethod } from "../types"
+import { PaymentMethod, User as UserType } from "../types"
 import { colors } from "../theme/colors"
 import { money } from "../data/mockData"
 
@@ -30,37 +31,57 @@ type CheckoutModalProps = {
   visible: boolean
   subtotal: number
   deliveryFee: number
+  currentUser?: UserType | null
   onClose: () => void
-  onSuccess: (orderId: string) => void
+  onSuccess: (order: {
+    id: string
+    customerName: string
+    customerPhone: string
+    deliveryAddress: string
+  }) => void
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   visible,
   subtotal,
   deliveryFee,
+  currentUser,
   onClose,
   onSuccess,
 }) => {
   const [step, setStep] = useState<1 | 2>(1)
-  const [address, setAddress] = useState("KG 11 Ave, Gasabo")
-  const [phone, setPhone] = useState("0788123456")
+  const [name, setName] = useState(currentUser?.name || "")
+  const [address, setAddress] = useState(currentUser?.address || "KG 11 Ave, Gasabo, Kigali")
+  const [phone, setPhone] = useState(currentUser?.phone || "0788123456")
   const [notes, setNotes] = useState("")
   const [payment, setPayment] = useState<PaymentMethod>("momo")
   const [error, setError] = useState("")
   const [processing, setProcessing] = useState(false)
 
+  useEffect(() => {
+    if (currentUser?.name) setName(currentUser.name)
+    if (currentUser?.address) setAddress(currentUser.address)
+    if (currentUser?.phone) setPhone(currentUser.phone)
+  }, [currentUser])
+
   const total = subtotal + deliveryFee
 
   const handleContinue = () => {
     setError("")
+
+    if (name.trim().length < 2) {
+      setError("Please enter your full name for delivery.")
+      return
+    }
+
     if (address.trim().length < 5) {
-      setError("Please enter a complete delivery address.")
+      setError("Please enter a complete delivery address in Rwanda.")
       return
     }
 
     const cleanPhone = phone.replace(/[\s-]/g, "")
     if (!/^07\d{8}$/.test(cleanPhone)) {
-      setError("Please enter a valid 10-digit Rwanda phone number (e.g., 0788123456).")
+      setError("Please enter a valid 10-digit Rwanda phone number (e.g. 0788123456).")
       return
     }
 
@@ -71,16 +92,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setProcessing(true)
     setTimeout(() => {
       setProcessing(false)
-      const orderId = "DG-2084"
+      const purchaseId = `DG-${Math.floor(1000 + Math.random() * 9000)}`
+      
       Alert.alert(
-        "Order Confirmed!",
-        `Thank you! Order ${orderId} has been placed successfully and will be delivered to ${address} in 2–3 business days.`,
+        "Purchase Successful!",
+        `Thank you, ${name}!\n\nYour Purchase ID is: ${purchaseId}\n\nYou can track this order's progress at any time using your Purchase ID on the Orders screen—no login required.`,
         [
           {
-            text: "Track Order",
+            text: "Track My Order",
             onPress: () => {
               onClose()
-              onSuccess(orderId)
+              onSuccess({
+                id: purchaseId,
+                customerName: name.trim(),
+                customerPhone: phone.trim(),
+                deliveryAddress: address.trim(),
+              })
             },
           },
         ],
@@ -100,7 +127,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           {/* Header */}
           <View style={styles.header}>
             <View>
-              <Text style={styles.kicker}>SECURE CHECKOUT</Text>
+              <Text style={styles.kicker}>
+                {!currentUser ? "GUEST CHECKOUT • NO ACCOUNT NEEDED" : "SECURE CHECKOUT"}
+              </Text>
               <Text style={styles.headerTitle}>
                 {step === 1 ? "Delivery details" : "Choose payment"}
               </Text>
@@ -147,21 +176,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
             {step === 1 ? (
               <>
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Delivery address</Text>
+                  <Text style={styles.label}>Your full name</Text>
                   <View style={styles.inputContainer}>
-                    <MapPin size={18} color={colors.textMuted} />
+                    <User size={18} color={colors.textMuted} />
                     <TextInput
                       style={styles.input}
-                      value={address}
-                      onChangeText={setAddress}
-                      placeholder="e.g. KG 11 Ave, Gasabo, Kigali"
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="e.g. Diane Gasana"
                       placeholderTextColor={colors.textMuted}
                     />
                   </View>
                 </View>
 
                 <View style={styles.fieldGroup}>
-                  <Text style={styles.label}>Contact phone number</Text>
+                  <Text style={styles.label}>Contact phone (for MoMo & delivery updates)</Text>
                   <View style={styles.inputContainer}>
                     <Smartphone size={18} color={colors.textMuted} />
                     <TextInput
@@ -176,12 +205,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </View>
 
                 <View style={styles.fieldGroup}>
+                  <Text style={styles.label}>Delivery address</Text>
+                  <View style={styles.inputContainer}>
+                    <MapPin size={18} color={colors.textMuted} />
+                    <TextInput
+                      style={styles.input}
+                      value={address}
+                      onChangeText={setAddress}
+                      placeholder="e.g. KG 11 Ave, Gasabo, Kigali"
+                      placeholderTextColor={colors.textMuted}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.fieldGroup}>
                   <Text style={styles.label}>Delivery notes (optional)</Text>
                   <TextInput
                     style={styles.textArea}
                     value={notes}
                     onChangeText={setNotes}
-                    placeholder="Gate code, landmark, or preferred delivery timing..."
+                    placeholder="Gate code, landmark, or delivery timing..."
                     placeholderTextColor={colors.textMuted}
                     multiline
                     numberOfLines={3}
@@ -211,8 +254,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   {
                     id: "momo" as PaymentMethod,
                     Icon: Smartphone,
-                    title: "Mobile Money",
-                    subtitle: "MTN MoMo or Airtel Money",
+                    title: "Mobile Money (MoMo)",
+                    subtitle: "MTN MoMo (*182#) or Airtel Money",
                   },
                   {
                     id: "visa" as PaymentMethod,
@@ -270,7 +313,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <View style={styles.securityBanner}>
                   <ShieldCheck size={17} color={colors.success} />
                   <Text style={styles.securityText}>
-                    Encrypted and protected. Zero stored card details.
+                    Encrypted and protected. A Purchase ID will be generated to track your delivery.
                   </Text>
                 </View>
 

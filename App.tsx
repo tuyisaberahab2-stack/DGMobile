@@ -7,7 +7,15 @@ import {
 import { Tab, Role, Language, Product, OrderItem, User, AuthMode } from "./src/types"
 import { colors } from "./src/theme/colors"
 import { PRODUCTS, INITIAL_ORDERS } from "./src/data/mockData"
-import { getProducts, saveOrder, signInUser, registerUser } from "./src/services/neon"
+import {
+  getProducts,
+  saveOrder,
+  signInUser,
+  registerUser,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+} from "./src/services/neon"
 import { Header } from "./src/components/Header"
 import { BottomNav } from "./src/components/BottomNav"
 import { ProductModal } from "./src/components/ProductModal"
@@ -109,12 +117,8 @@ export default function App() {
   }
 
   const handleStartCheckout = () => {
-    if (!authenticated) {
-      setPendingCheckout(true)
-      setAuthModalOpen(true)
-    } else {
-      setCheckoutOpen(true)
-    }
+    // Allow customers to pay even with no account (Guest Checkout)
+    setCheckoutOpen(true)
   }
 
   // Unified RBAC Authentication
@@ -162,27 +166,34 @@ export default function App() {
     setTab("home")
   }
 
-  const handleCheckoutSuccess = (orderId: string) => {
-    const customerName = currentUser?.name || "Aline Mukamana"
-    const customerPhone = currentUser?.phone || "0788123456"
-    const deliveryAddress = currentUser?.address || "KG 11 Ave, Gasabo"
+  const handleCheckoutSuccess = (order: {
+    id: string
+    customerName: string
+    customerPhone: string
+    deliveryAddress: string
+  }) => {
+    const deliveryFee = cartCount > 0 ? 2500 : 0
+    const finalTotal = subtotal + deliveryFee
 
     saveOrder({
-      id: orderId,
-      customerName,
-      customerPhone,
-      deliveryAddress,
-      total: subtotal + 2500,
+      id: order.id,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      deliveryAddress: order.deliveryAddress,
+      total: finalTotal,
       itemsCount: cartCount,
     })
     setCart({})
     setCheckedOut(true)
     setActiveOrder((prev) => ({
       ...prev,
-      id: orderId,
-      customer: customerName,
-      status: "On the way",
-      stepIndex: 2,
+      id: order.id,
+      customer: order.customerName,
+      status: "Confirmed",
+      total: finalTotal,
+      itemsCount: cartCount,
+      stepIndex: 0,
+      estimatedArrival: "Within 2–3 business days",
     }))
     setTab("orders")
   }
@@ -192,6 +203,29 @@ export default function App() {
       setCategory(cat)
     }
     setTab("search")
+  }
+
+  const handleAddProduct = async (newProd: Omit<Product, "id">) => {
+    const created = await createProduct(newProd)
+    if (created) {
+      setProducts((curr) => [created, ...curr])
+    } else {
+      const fallbackId = Math.max(...products.map((p) => p.id), 0) + 1
+      const fallbackProd: Product = { ...newProd, id: fallbackId, rating: 4.9 }
+      setProducts((curr) => [fallbackProd, ...curr])
+    }
+  }
+
+  const handleUpdateProduct = async (updated: Product) => {
+    await updateProduct(updated)
+    setProducts((curr) =>
+      curr.map((p) => (p.id === updated.id ? updated : p)),
+    )
+  }
+
+  const handleDeleteProduct = async (productId: number) => {
+    await deleteProduct(productId)
+    setProducts((curr) => curr.filter((p) => p.id !== productId))
   }
 
   return (
@@ -251,6 +285,7 @@ export default function App() {
                 products={products}
                 language={language}
                 checkedOut={checkedOut}
+                lastOrderId={activeOrder.id}
                 onUpdateQuantity={handleUpdateQuantity}
                 onStartCheckout={handleStartCheckout}
                 onExplore={() => setTab("search")}
@@ -282,7 +317,12 @@ export default function App() {
 
             {tab === "admin" && (
               role === "owner" ? (
-                <AdminScreen products={products} />
+                <AdminScreen
+                  products={products}
+                  onAddProduct={handleAddProduct}
+                  onUpdateProduct={handleUpdateProduct}
+                  onDeleteProduct={handleDeleteProduct}
+                />
               ) : (
                 <HomeScreen
                   products={products}
@@ -327,11 +367,12 @@ export default function App() {
             onAuthenticate={handleAuthenticate}
           />
 
-          {/* Checkout Modal */}
+          {/* Checkout Modal - Seamless Guest Checkout with Purchase ID */}
           <CheckoutModal
             visible={checkoutOpen}
             subtotal={subtotal}
             deliveryFee={cartCount > 0 ? 2500 : 0}
+            currentUser={currentUser}
             onClose={() => setCheckoutOpen(false)}
             onSuccess={handleCheckoutSuccess}
           />

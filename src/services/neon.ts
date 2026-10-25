@@ -65,6 +65,102 @@ export async function updateProductStock(
 }
 
 /**
+ * Create a new product in Neon database (Store Owner CRUD)
+ */
+export async function createProduct(product: {
+  name: string
+  rwName?: string
+  category: string
+  price: number
+  oldPrice?: number
+  badge?: string
+  image: string
+  description?: string
+  stock?: number
+}): Promise<Product | null> {
+  try {
+    const stockVal = product.stock !== undefined ? product.stock : 10
+    const rows = await sql`
+      INSERT INTO products (name, rw_name, category, price, old_price, rating, badge, image, description, stock)
+      VALUES (
+        ${product.name},
+        ${product.rwName || product.name},
+        ${product.category},
+        ${product.price},
+        ${product.oldPrice || null},
+        4.9,
+        ${product.badge || null},
+        ${product.image},
+        ${product.description || null},
+        ${stockVal}
+      )
+      RETURNING id, name, rw_name, category, price, old_price, rating, badge, image, description, stock;
+    `
+    if (rows && rows.length > 0) {
+      const r = rows[0]
+      return {
+        id: Number(r.id),
+        name: r.name,
+        rwName: r.rw_name,
+        category: r.category,
+        price: Number(r.price),
+        oldPrice: r.old_price ? Number(r.old_price) : undefined,
+        rating: Number(r.rating || 4.9),
+        badge: r.badge || undefined,
+        image: r.image,
+        description: r.description || undefined,
+        stock: Number(r.stock ?? 10),
+      }
+    }
+  } catch (error) {
+    console.warn("Neon createProduct error:", error)
+  }
+  return null
+}
+
+/**
+ * Update product details in Neon database (Store Owner CRUD)
+ */
+export async function updateProduct(product: Product): Promise<boolean> {
+  try {
+    const stockVal = product.stock !== undefined ? product.stock : 10
+    await sql`
+      UPDATE products
+      SET name = ${product.name},
+          rw_name = ${product.rwName || product.name},
+          category = ${product.category},
+          price = ${product.price},
+          old_price = ${product.oldPrice || null},
+          badge = ${product.badge || null},
+          image = ${product.image},
+          description = ${product.description || null},
+          stock = ${stockVal}
+      WHERE id = ${product.id};
+    `
+    return true
+  } catch (error) {
+    console.warn("Neon updateProduct error:", error)
+    return false
+  }
+}
+
+/**
+ * Delete product from Neon database (Store Owner CRUD)
+ */
+export async function deleteProduct(productId: number): Promise<boolean> {
+  try {
+    await sql`
+      DELETE FROM products
+      WHERE id = ${productId};
+    `
+    return true
+  } catch (error) {
+    console.warn("Neon deleteProduct error:", error)
+    return false
+  }
+}
+
+/**
  * Save new order in Neon database
  */
 export async function saveOrder(order: {
@@ -122,6 +218,53 @@ export async function getOrders(): Promise<OrderItem[]> {
     console.warn("Neon getOrders error, using local fallback:", error)
     return INITIAL_ORDERS
   }
+}
+
+/**
+ * Look up order by Purchase ID from Neon database (for guest or customer tracking)
+ */
+export async function getOrderByPurchaseId(
+  purchaseId: string,
+): Promise<OrderItem | null> {
+  try {
+    const cleanId = purchaseId.trim()
+    const rows = await sql`
+      SELECT id, customer_name, customer_phone, delivery_address, status, total, items_count, created_at
+      FROM orders
+      WHERE LOWER(id) = LOWER(${cleanId})
+      LIMIT 1;
+    `
+    if (rows && rows.length > 0) {
+      const r = rows[0]
+      return {
+        id: r.id,
+        customer: r.customer_name,
+        date: new Date(r.created_at).toLocaleDateString("en-GB", {
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+        }),
+        status: (r.status || "Confirmed") as any,
+        itemsCount: Number(r.items_count || 1),
+        total: Number(r.total || 0),
+        productName: "Order items · Rwanda delivery",
+        productImage:
+          "https://images.unsplash.com/photo-1511556820780-d912e42b4980?auto=format&fit=crop&w=900&q=85",
+        stepIndex:
+          r.status === "Delivered"
+            ? 3
+            : r.status === "On the way"
+            ? 2
+            : r.status === "Packed"
+            ? 1
+            : 0,
+        estimatedArrival: "Within 2–3 business days",
+      }
+    }
+  } catch (error) {
+    console.warn("Neon getOrderByPurchaseId error:", error)
+  }
+  return null
 }
 
 /**

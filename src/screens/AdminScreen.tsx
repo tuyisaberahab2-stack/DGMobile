@@ -6,21 +6,30 @@ import {
   ScrollView,
   Image,
   Pressable,
+  Alert,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from "react-native"
 import {
   AlertCircle,
   BarChart3,
   Boxes,
+  Check,
   ChevronRight,
   Eye,
   LayoutDashboard,
   Minus,
   PackageCheck,
+  Pencil,
   Plus,
   RefreshCw,
   ShoppingBag,
+  Sparkles,
+  Trash2,
   TrendingUp,
   Wallet,
+  X,
 } from "lucide-react-native"
 import { Product } from "../types"
 import { colors } from "../theme/colors"
@@ -29,9 +38,17 @@ import { updateProductStock } from "../services/neon"
 
 type AdminScreenProps = {
   products: Product[]
+  onAddProduct: (product: Omit<Product, "id">) => Promise<void>
+  onUpdateProduct: (product: Product) => Promise<void>
+  onDeleteProduct: (productId: number) => Promise<void>
 }
 
-export const AdminScreen: React.FC<AdminScreenProps> = ({ products }) => {
+export const AdminScreen: React.FC<AdminScreenProps> = ({
+  products,
+  onAddProduct,
+  onUpdateProduct,
+  onDeleteProduct,
+}) => {
   const [section, setSection] = useState<
     "overview" | "products" | "orders" | "reports"
   >("overview")
@@ -47,6 +64,23 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ products }) => {
 
   const [simulatedError, setSimulatedError] = useState(false)
 
+  // Product CRUD Form Modal State
+  const [modalVisible, setModalVisible] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editingProductId, setEditingProductId] = useState<number | null>(null)
+  const [formName, setFormName] = useState("")
+  const [formRwName, setFormRwName] = useState("")
+  const [formCategory, setFormCategory] = useState("Leather")
+  const [formPrice, setFormPrice] = useState("")
+  const [formStock, setFormStock] = useState("10")
+  const [formBadge, setFormBadge] = useState("Handmade")
+  const [formImage, setFormImage] = useState(
+    "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=800&q=85",
+  )
+  const [formDesc, setFormDesc] = useState("")
+  const [formError, setFormError] = useState("")
+  const [saving, setSaving] = useState(false)
+
   const handleStockChange = (productId: number, change: number) => {
     setStock((current) => {
       const nextVal = Math.max(0, (current[productId] || 0) + change)
@@ -56,6 +90,113 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ products }) => {
         [productId]: nextVal,
       }
     })
+  }
+
+  const handleOpenAddModal = () => {
+    setIsEditing(false)
+    setEditingProductId(null)
+    setFormName("")
+    setFormRwName("")
+    setFormCategory("Leather")
+    setFormPrice("")
+    setFormStock("10")
+    setFormBadge("New")
+    setFormImage(
+      "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=800&q=85",
+    )
+    setFormDesc("")
+    setFormError("")
+    setModalVisible(true)
+  }
+
+  const handleOpenEditModal = (product: Product) => {
+    setIsEditing(true)
+    setEditingProductId(product.id)
+    setFormName(product.name)
+    setFormRwName(product.rwName || product.name)
+    setFormCategory(product.category)
+    setFormPrice(String(product.price))
+    setFormStock(String(stock[product.id] ?? product.stock ?? 10))
+    setFormBadge(product.badge || "")
+    setFormImage(product.image)
+    setFormDesc(product.description || "")
+    setFormError("")
+    setModalVisible(true)
+  }
+
+  const handleConfirmDelete = (product: Product) => {
+    Alert.alert(
+      "Delete Product",
+      `Are you sure you want to remove "${product.name}" from the store catalog? This will delete the item from Neon PostgreSQL.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await onDeleteProduct(product.id)
+            } catch (err: any) {
+              Alert.alert("Error", "Could not delete product.")
+            }
+          },
+        },
+      ],
+    )
+  }
+
+  const handleSaveProduct = async () => {
+    setFormError("")
+    if (!formName.trim()) {
+      setFormError("Please enter product name.")
+      return
+    }
+    const priceNum = parseInt(formPrice.replace(/[^0-9]/g, ""), 10)
+    if (isNaN(priceNum) || priceNum <= 0) {
+      setFormError("Please enter a valid price in RWF.")
+      return
+    }
+    const stockNum = parseInt(formStock.replace(/[^0-9]/g, ""), 10) || 0
+
+    setSaving(true)
+    try {
+      if (isEditing && editingProductId !== null) {
+        await onUpdateProduct({
+          id: editingProductId,
+          name: formName.trim(),
+          rwName: formRwName.trim() || formName.trim(),
+          category: formCategory,
+          price: priceNum,
+          stock: stockNum,
+          badge: formBadge.trim() || undefined,
+          image:
+            formImage.trim() ||
+            "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=800&q=85",
+          description: formDesc.trim() || undefined,
+          rating: 4.9,
+        })
+        setStock((curr) => ({ ...curr, [editingProductId]: stockNum }))
+      } else {
+        await onAddProduct({
+          name: formName.trim(),
+          rwName: formRwName.trim() || formName.trim(),
+          category: formCategory,
+          price: priceNum,
+          stock: stockNum,
+          badge: formBadge.trim() || undefined,
+          image:
+            formImage.trim() ||
+            "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=800&q=85",
+          description: formDesc.trim() || undefined,
+          rating: 4.9,
+        })
+      }
+      setModalVisible(false)
+    } catch (err: any) {
+      setFormError(err?.message || "Failed to save product.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (simulatedError) {
@@ -255,7 +396,7 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ products }) => {
               <Text style={styles.reportKicker}>CATALOG</Text>
               <Text style={styles.reportTitle}>Products & inventory</Text>
             </View>
-            <Pressable style={styles.addProductBtn}>
+            <Pressable style={styles.addProductBtn} onPress={handleOpenAddModal}>
               <Plus size={14} color="#FFF" />
               <Text style={styles.addProductText}>Add item</Text>
             </Pressable>
@@ -311,8 +452,24 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ products }) => {
                         : styles.stockStatusTextGood,
                     ]}
                   >
-                    {isLow ? "Low stock" : "Active"}
+                    {isLow ? "Low" : "Active"}
                   </Text>
+                </View>
+
+                {/* CRUD Action Buttons: Edit & Delete */}
+                <View style={styles.actionButtonGroup}>
+                  <Pressable
+                    style={styles.actionBtn}
+                    onPress={() => handleOpenEditModal(product)}
+                  >
+                    <Pencil size={13} color={colors.primary} />
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionBtn, styles.deleteBtn]}
+                    onPress={() => handleConfirmDelete(product)}
+                  >
+                    <Trash2 size={13} color={colors.danger} />
+                  </Pressable>
                 </View>
               </View>
             )
@@ -396,6 +553,255 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({ products }) => {
           </View>
         </>
       )}
+
+      {/* Product Form Modal (Add / Edit) */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalKicker}>
+                  {isEditing ? "EDIT CATALOG ITEM" : "NEW PRODUCT"}
+                </Text>
+                <Text style={styles.modalTitle}>
+                  {isEditing ? "Update Product" : "Add to Storefront"}
+                </Text>
+              </View>
+              <Pressable
+                style={styles.modalCloseBtn}
+                onPress={() => setModalVisible(false)}
+              >
+                <X size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.modalBody}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Name (English) */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Product Name (English)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formName}
+                  onChangeText={setFormName}
+                  placeholder="e.g. Rwandan Leather Tote"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+
+              {/* Name (Kinyarwanda) */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Product Name (Ikinyarwanda)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={formRwName}
+                  onChangeText={setFormRwName}
+                  placeholder="e.g. Igisakoshi cy'uruhu cyiza"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+
+              {/* Category Pills */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Category</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryPillsRow}
+                >
+                  {[
+                    "Leather",
+                    "Accessories",
+                    "Apparel",
+                    "Footwear",
+                    "Bags",
+                    "Shoes",
+                    "Beauty",
+                    "Home",
+                  ].map((cat) => {
+                    const isSelected = formCategory === cat
+                    return (
+                      <Pressable
+                        key={cat}
+                        style={[
+                          styles.categoryPill,
+                          isSelected && styles.categoryPillSelected,
+                        ]}
+                        onPress={() => setFormCategory(cat)}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryPillText,
+                            isSelected && styles.categoryPillTextSelected,
+                          ]}
+                        >
+                          {cat}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Price & Stock Row */}
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                  <Text style={styles.formLabel}>Price (RWF)</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formPrice}
+                    onChangeText={setFormPrice}
+                    placeholder="e.g. 48500"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                  />
+                </View>
+
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={styles.formLabel}>Stock Count</Text>
+                  <TextInput
+                    style={styles.formInput}
+                    value={formStock}
+                    onChangeText={setFormStock}
+                    placeholder="10"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                  />
+                </View>
+              </View>
+
+              {/* Badge Selection */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Badge / Highlight</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.categoryPillsRow}
+                >
+                  {[
+                    "Handmade",
+                    "New",
+                    "Pure Silk",
+                    "Bestseller",
+                    "Featured",
+                  ].map((b) => {
+                    const isSelected = formBadge === b
+                    return (
+                      <Pressable
+                        key={b}
+                        style={[
+                          styles.categoryPill,
+                          isSelected && styles.categoryPillSelected,
+                        ]}
+                        onPress={() => setFormBadge(isSelected ? "" : b)}
+                      >
+                        <Text
+                          style={[
+                            styles.categoryPillText,
+                            isSelected && styles.categoryPillTextSelected,
+                          ]}
+                        >
+                          {b}
+                        </Text>
+                      </Pressable>
+                    )
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Photo Presets & URL */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Photo (Presets or Image URL)</Text>
+                <View style={styles.presetsRow}>
+                  {[
+                    "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?auto=format&fit=crop&w=800&q=85",
+                    "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=800&q=85",
+                    "https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=800&q=85",
+                    "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800&q=85",
+                  ].map((url, idx) => {
+                    const isSelected = formImage === url
+                    return (
+                      <Pressable
+                        key={idx}
+                        style={[
+                          styles.presetThumbWrap,
+                          isSelected && styles.presetThumbWrapSelected,
+                        ]}
+                        onPress={() => setFormImage(url)}
+                      >
+                        <Image
+                          source={{ uri: url }}
+                          style={styles.presetThumb}
+                        />
+                        {isSelected && (
+                          <View style={styles.presetCheck}>
+                            <Check size={10} color="#FFF" />
+                          </View>
+                        )}
+                      </Pressable>
+                    )
+                  })}
+                </View>
+
+                <TextInput
+                  style={[styles.formInput, { marginTop: 8 }]}
+                  value={formImage}
+                  onChangeText={setFormImage}
+                  placeholder="https://images.unsplash.com/..."
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+
+              {/* Description */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Description</Text>
+                <TextInput
+                  style={styles.formTextArea}
+                  value={formDesc}
+                  onChangeText={setFormDesc}
+                  placeholder="Product story, materials, and artisan details..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+
+              {formError ? (
+                <View style={styles.errorBox}>
+                  <AlertCircle size={14} color={colors.dangerText} />
+                  <Text style={styles.errorText}>{formError}</Text>
+                </View>
+              ) : null}
+
+              {/* Submit Button */}
+              <Pressable
+                style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
+                onPress={handleSaveProduct}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <>
+                    <Check size={16} color="#FFF" />
+                    <Text style={styles.saveBtnText}>
+                      {isEditing ? "Save Changes" : "Create Product"}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -814,5 +1220,187 @@ const styles = StyleSheet.create({
     color: "#FFF",
     fontSize: 12,
     fontWeight: "700",
+  },
+  actionButtonGroup: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  actionBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteBtn: {
+    backgroundColor: colors.dangerLight,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(20, 24, 21, 0.65)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    maxHeight: "92%",
+    paddingTop: 16,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalKicker: {
+    color: colors.accent,
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+    marginBottom: 3,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.textPrimary,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 40,
+  },
+  formGroup: {
+    marginBottom: 14,
+  },
+  formRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  formLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textPrimary,
+    marginBottom: 6,
+  },
+  formInput: {
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
+    paddingHorizontal: 12,
+    fontSize: 12,
+    color: colors.textPrimary,
+  },
+  formTextArea: {
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    borderRadius: 12,
+    backgroundColor: "#FFF",
+    padding: 12,
+    fontSize: 12,
+    color: colors.textPrimary,
+    textAlignVertical: "top",
+    minHeight: 70,
+  },
+  categoryPillsRow: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  categoryPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceAlt,
+  },
+  categoryPillSelected: {
+    backgroundColor: colors.primary,
+  },
+  categoryPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textSecondary,
+  },
+  categoryPillTextSelected: {
+    color: "#FFF",
+  },
+  presetsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 6,
+  },
+  presetThumbWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "transparent",
+    overflow: "hidden",
+    position: "relative",
+  },
+  presetThumbWrapSelected: {
+    borderColor: colors.accent,
+  },
+  presetThumb: {
+    width: "100%",
+    height: "100%",
+  },
+  presetCheck: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    backgroundColor: colors.primary,
+    borderRadius: 6,
+    width: 14,
+    height: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  saveBtn: {
+    height: 48,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  saveBtnDisabled: {
+    opacity: 0.7,
+  },
+  saveBtnText: {
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.dangerLight,
+    padding: 10,
+    borderRadius: 10,
+    marginTop: 10,
+  },
+  errorText: {
+    color: colors.dangerText,
+    fontSize: 11,
+    fontWeight: "600",
+    flex: 1,
   },
 })

@@ -19,6 +19,7 @@ export type Product = {
   image: string
   badge?: string
   description?: string
+  stock?: number
 }
 
 export type OrderItem = {

@@ -27,6 +27,7 @@ type CartScreenProps = {
   products: Product[]
   language: Language
   checkedOut: boolean
+  lastOrderId?: string
   onUpdateQuantity: (productId: number, change: number) => void
   onStartCheckout: () => void
   onExplore: () => void
@@ -38,6 +39,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   products,
   language,
   checkedOut,
+  lastOrderId,
   onUpdateQuantity,
   onStartCheckout,
   onExplore,
@@ -83,7 +85,9 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           <View style={styles.checkCircle}>
             <Check size={36} color="#FFF" />
           </View>
-          <Text style={styles.successOrderLabel}>ORDER DG-2084</Text>
+          <Text style={styles.successOrderLabel}>
+            PURCHASE ID: {lastOrderId || "DG-2084"}
+          </Text>
           <Text style={styles.successTitle}>{t.thankYou}</Text>
           <Text style={styles.successSub}>{t.confirmedNotice}</Text>
 

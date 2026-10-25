@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useState } from "react"
 import {
   StyleSheet,
   Text,
@@ -6,17 +6,23 @@ import {
   ScrollView,
   Image,
   Pressable,
+  TextInput,
+  ActivityIndicator,
 } from "react-native"
 import {
+  AlertCircle,
   Check,
   ChevronRight,
   LogIn,
   PackageCheck,
+  Search,
+  Sparkles,
   Truck,
 } from "lucide-react-native"
 import { OrderItem, Language } from "../types"
 import { colors } from "../theme/colors"
 import { copy, money, PAST_ORDERS } from "../data/mockData"
+import { getOrderByPurchaseId } from "../services/neon"
 
 type OrdersScreenProps = {
   authenticated: boolean
@@ -34,11 +40,65 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   const t = copy[language]
   const trackingSteps = ["Confirmed", "Packed", "On the way", "Delivered"]
 
+  const [searchId, setSearchId] = useState("")
+  const [searchedOrder, setSearchedOrder] = useState<OrderItem | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState("")
+
+  const displayOrder = searchedOrder || activeOrder
+
+  const handleTrackById = async () => {
+    if (!searchId.trim()) return
+    setSearchError("")
+    setSearching(true)
+
+    // Check if it matches active order
+    if (searchId.trim().toUpperCase() === activeOrder.id.toUpperCase()) {
+      setSearchedOrder(activeOrder)
+      setSearching(false)
+      return
+    }
+
+    // Check past orders
+    const pastMatch = PAST_ORDERS.find(
+      (p) => p.id.toUpperCase() === searchId.trim().toUpperCase(),
+    )
+    if (pastMatch) {
+      setSearchedOrder({
+        id: pastMatch.id,
+        customer: "Customer",
+        date: pastMatch.date,
+        status: pastMatch.status as any,
+        itemsCount: 1,
+        total: pastMatch.total,
+        productName: "Everyday leather tote",
+        productImage:
+          "https://images.unsplash.com/photo-1511556820780-d912e42b4980?auto=format&fit=crop&w=900&q=85",
+        stepIndex: 3,
+        estimatedArrival: "Delivered",
+      })
+      setSearching(false)
+      return
+    }
+
+    // Query Neon PostgreSQL
+    const dbOrder = await getOrderByPurchaseId(searchId.trim())
+    setSearching(false)
+    if (dbOrder) {
+      setSearchedOrder(dbOrder)
+    } else {
+      setSearchError(
+        `Purchase ID "${searchId.trim()}" not found. Please verify the ID on your receipt.`,
+      )
+    }
+  }
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
     >
       {/* Header */}
       <View style={styles.header}>
@@ -46,112 +106,182 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         <Text style={styles.title}>{t.orders}</Text>
       </View>
 
-      {authenticated ? (
-        <>
-          {/* Active Order Card */}
-          <View style={styles.orderCard}>
-            <View style={styles.orderTop}>
-              <View>
-                <Text style={styles.orderIdLabel}>ORDER {activeOrder.id}</Text>
-                <Text style={styles.orderStatusTitle}>{activeOrder.status}</Text>
-              </View>
-              <View style={styles.statusBadge}>
-                <Truck size={16} color="#FFF" />
-                <Text style={styles.statusBadgeText}>2 days</Text>
-              </View>
-            </View>
+      {/* Purchase ID Quick Tracker Input */}
+      <View style={styles.trackerCard}>
+        <Text style={styles.trackerTitle}>Track with Purchase ID</Text>
+        <Text style={styles.trackerSub}>
+          Check delivery progress anytime without signing in.
+        </Text>
 
-            <View style={styles.orderProductRow}>
-              <Image
-                source={{ uri: activeOrder.productImage }}
-                style={styles.orderProductImage}
-                resizeMode="cover"
-              />
-              <View style={styles.orderProductInfo}>
-                <Text style={styles.orderProductName}>
-                  {activeOrder.productName}
-                </Text>
-                <Text style={styles.orderProductSub}>
-                  {activeOrder.itemsCount} item · {money(activeOrder.total)}
-                </Text>
+        <View style={styles.searchRow}>
+          <View style={styles.searchInputContainer}>
+            <Search size={16} color={colors.textMuted} />
+            <TextInput
+              style={styles.searchInput}
+              value={searchId}
+              onChangeText={(txt) => {
+                setSearchId(txt)
+                if (searchError) setSearchError("")
+              }}
+              placeholder="e.g. DG-2084"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="characters"
+            />
+          </View>
+          <Pressable
+            style={[styles.trackButton, searching && styles.buttonDisabled]}
+            onPress={handleTrackById}
+            disabled={searching}
+          >
+            {searching ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={styles.trackButtonText}>Track</Text>
+            )}
+          </Pressable>
+        </View>
+
+        {searchError ? (
+          <View style={styles.errorBox}>
+            <AlertCircle size={14} color={colors.dangerText} />
+            <Text style={styles.errorText}>{searchError}</Text>
+          </View>
+        ) : null}
+
+        {searchedOrder && (
+          <Pressable
+            style={styles.resetButton}
+            onPress={() => {
+              setSearchedOrder(null)
+              setSearchId("")
+            }}
+          >
+            <Text style={styles.resetButtonText}>View current active order</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {/* Active Order Card */}
+      {displayOrder && (
+        <View style={styles.orderCard}>
+          <View style={styles.orderTop}>
+            <View>
+              <View style={styles.idPill}>
+                <Sparkles size={11} color={colors.accentAmber} />
+                <Text style={styles.orderIdLabel}>PURCHASE ID: {displayOrder.id}</Text>
               </View>
-              <ChevronRight size={18} color={colors.textSecondary} />
+              <Text style={styles.orderStatusTitle}>{displayOrder.status}</Text>
             </View>
-
-            {/* Tracking Steps */}
-            <View style={styles.trackingContainer}>
-              {trackingSteps.map((step, idx) => {
-                const isDone = idx <= activeOrder.stepIndex
-                return (
-                  <View key={step} style={styles.stepColumn}>
-                    <View
-                      style={[
-                        styles.stepDot,
-                        isDone && styles.stepDotDone,
-                      ]}
-                    >
-                      {isDone && <Check size={10} color="#FFF" />}
-                    </View>
-                    <Text
-                      style={[
-                        styles.stepLabel,
-                        isDone && styles.stepLabelDone,
-                      ]}
-                    >
-                      {step}
-                    </Text>
-                  </View>
-                )
-              })}
-            </View>
-
-            {/* Arrival Notice */}
-            <View style={styles.arrivalBox}>
-              <PackageCheck size={18} color={colors.primary} />
-              <Text style={styles.arrivalText}>
-                Estimated arrival: {activeOrder.estimatedArrival || "Thursday, 24 October"}
+            <View style={styles.statusBadge}>
+              <Truck size={15} color="#FFF" />
+              <Text style={styles.statusBadgeText}>
+                {displayOrder.status === "Delivered" ? "Completed" : "2–3 days"}
               </Text>
             </View>
           </View>
 
-          {/* Past Orders Section */}
+          <View style={styles.orderProductRow}>
+            <Image
+              source={{ uri: displayOrder.productImage }}
+              style={styles.orderProductImage}
+              resizeMode="cover"
+            />
+            <View style={styles.orderProductInfo}>
+              <Text style={styles.orderProductName}>
+                {displayOrder.productName}
+              </Text>
+              <Text style={styles.orderProductSub}>
+                {displayOrder.itemsCount} {displayOrder.itemsCount === 1 ? "item" : "items"} · {money(displayOrder.total)}
+              </Text>
+            </View>
+            <ChevronRight size={18} color={colors.textSecondary} />
+          </View>
+
+          {/* Tracking Steps Stepper */}
+          <View style={styles.trackingContainer}>
+            {trackingSteps.map((step, idx) => {
+              const isDone = idx <= displayOrder.stepIndex
+              return (
+                <View key={step} style={styles.stepColumn}>
+                  <View
+                    style={[
+                      styles.stepDot,
+                      isDone && styles.stepDotDone,
+                    ]}
+                  >
+                    {isDone && <Check size={10} color="#FFF" />}
+                  </View>
+                  <Text
+                    style={[
+                      styles.stepLabel,
+                      isDone && styles.stepLabelDone,
+                    ]}
+                  >
+                    {step}
+                  </Text>
+                </View>
+              )
+            })}
+          </View>
+
+          {/* Arrival Notice */}
+          <View style={styles.arrivalBox}>
+            <PackageCheck size={18} color={colors.primary} />
+            <Text style={styles.arrivalText}>
+              Estimated arrival: {displayOrder.estimatedArrival || "Thursday, 24 October"}
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Past Orders Section (Available to authenticated users, or informative card for guests) */}
+      {authenticated ? (
+        <>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{t.pastOrders}</Text>
           </View>
 
           <View style={styles.pastOrdersList}>
             {PAST_ORDERS.map((item) => (
-              <View key={item.id} style={styles.pastOrderCard}>
+              <Pressable
+                key={item.id}
+                style={styles.pastOrderCard}
+                onPress={() => {
+                  setSearchId(item.id)
+                  handleTrackById()
+                }}
+              >
                 <View style={styles.pastOrderLeft}>
                   <View style={styles.pastOrderIconBox}>
                     <Check size={16} color={colors.success} />
                   </View>
                   <View>
                     <Text style={styles.pastOrderId}>
-                      {item.id} · {item.date}
+                      PURCHASE ID: {item.id} · {item.date}
                     </Text>
                     <Text style={styles.pastOrderStatus}>{item.status}</Text>
                   </View>
                 </View>
                 <Text style={styles.pastOrderTotal}>{money(item.total)}</Text>
-              </View>
+              </Pressable>
             ))}
           </View>
         </>
       ) : (
-        /* Guest State */
-        <View style={styles.guestContainer}>
-          <View style={styles.guestIconCircle}>
-            <PackageCheck size={36} color={colors.accent} />
+        <View style={styles.guestNoticeCard}>
+          <View style={styles.guestNoticeIcon}>
+            <Sparkles size={20} color={colors.accentAmber} />
           </View>
-          <Text style={styles.guestTitle}>Sign in to view orders</Text>
-          <Text style={styles.guestSub}>
-            Track existing purchases, manage delivery progress in real time, and view receipts.
-          </Text>
-          <Pressable style={styles.signInButton} onPress={onOpenAuth}>
-            <LogIn size={16} color="#FFF" />
-            <Text style={styles.signInButtonText}>Sign in or register</Text>
-          </Pressable>
+          <View style={styles.guestNoticeTextGroup}>
+            <Text style={styles.guestNoticeTitle}>Guest Orders Protected</Text>
+            <Text style={styles.guestNoticeSub}>
+              All guest purchases receive a unique Purchase ID. Want all orders saved to a permanent account?
+            </Text>
+            <Pressable style={styles.inlineSignIn} onPress={onOpenAuth}>
+              <LogIn size={14} color={colors.primary} />
+              <Text style={styles.inlineSignInText}>Sign in or register</Text>
+            </Pressable>
+          </View>
         </View>
       )}
     </ScrollView>
@@ -166,10 +296,10 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 36,
+    paddingBottom: 40,
   },
   header: {
-    marginBottom: 18,
+    marginBottom: 14,
   },
   kicker: {
     fontSize: 10,
@@ -184,19 +314,107 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     letterSpacing: -0.6,
   },
+  trackerCard: {
+    backgroundColor: colors.surfaceLight,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+  },
+  trackerTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: colors.textPrimary,
+    marginBottom: 3,
+  },
+  trackerSub: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  searchRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  searchInputContainer: {
+    flex: 1,
+    height: 44,
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.textPrimary,
+    fontWeight: "700",
+  },
+  trackButton: {
+    height: 44,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  trackButtonText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  errorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.dangerLight,
+    padding: 9,
+    borderRadius: 10,
+    marginTop: 10,
+  },
+  errorText: {
+    color: colors.dangerText,
+    fontSize: 11,
+    fontWeight: "600",
+    flex: 1,
+  },
+  resetButton: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+  },
+  resetButtonText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.accent,
+  },
   orderCard: {
     backgroundColor: colors.surfaceTan,
     borderRadius: 22,
-    padding: 20,
+    padding: 18,
     marginBottom: 24,
   },
   orderTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingBottom: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderDark,
+  },
+  idPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 2,
   },
   orderIdLabel: {
     fontSize: 10,
@@ -208,16 +426,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: colors.textPrimary,
-    marginTop: 2,
   },
   statusBadge: {
     backgroundColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 11,
   },
   statusBadgeText: {
     color: "#FFF",
@@ -228,11 +445,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   orderProductImage: {
-    width: 60,
-    height: 60,
+    width: 58,
+    height: 58,
     borderRadius: 12,
     backgroundColor: colors.surfaceAlt,
   },
@@ -240,7 +457,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   orderProductName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     color: colors.textPrimary,
     marginBottom: 3,
@@ -252,13 +469,13 @@ const styles = StyleSheet.create({
   trackingContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 14,
+    paddingVertical: 12,
     position: "relative",
   },
   stepColumn: {
     flex: 1,
     alignItems: "center",
-    gap: 6,
+    gap: 5,
   },
   stepDot: {
     width: 20,
@@ -289,9 +506,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: "rgba(255, 255, 255, 0.65)",
-    padding: 12,
+    padding: 11,
     borderRadius: 12,
-    marginTop: 8,
+    marginTop: 6,
   },
   arrivalText: {
     fontSize: 11,
@@ -326,8 +543,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   pastOrderIconBox: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: 10,
     backgroundColor: colors.successLight,
     alignItems: "center",
@@ -337,9 +554,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: colors.textSecondary,
     marginBottom: 2,
+    fontWeight: "600",
   },
   pastOrderStatus: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "700",
     color: colors.textPrimary,
   },
@@ -348,46 +566,45 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: colors.textPrimary,
   },
-  guestContainer: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 70,
-    paddingHorizontal: 20,
+  guestNoticeCard: {
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 18,
+    padding: 16,
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
   },
-  guestIconCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+  guestNoticeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.surfaceWarm,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
   },
-  guestTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+  guestNoticeTextGroup: {
+    flex: 1,
+  },
+  guestNoticeTitle: {
+    fontSize: 13,
+    fontWeight: "800",
     color: colors.textPrimary,
-    marginBottom: 6,
+    marginBottom: 3,
   },
-  guestSub: {
-    fontSize: 12,
+  guestNoticeSub: {
+    fontSize: 11,
     color: colors.textSecondary,
-    textAlign: "center",
-    marginBottom: 24,
-    lineHeight: 18,
+    lineHeight: 16,
+    marginBottom: 8,
   },
-  signInButton: {
-    backgroundColor: colors.primary,
+  inlineSignIn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 14,
+    gap: 6,
   },
-  signInButtonText: {
-    color: "#FFF",
-    fontSize: 13,
+  inlineSignInText: {
+    color: colors.primary,
+    fontSize: 12,
     fontWeight: "700",
   },
 })
