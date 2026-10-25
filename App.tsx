@@ -19,6 +19,7 @@ import { CartScreen } from "./src/screens/CartScreen"
 import { OrdersScreen } from "./src/screens/OrdersScreen"
 import { ProfileScreen } from "./src/screens/ProfileScreen"
 import { AdminScreen } from "./src/screens/AdminScreen"
+import { SplashScreen } from "./src/components/SplashScreen"
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
@@ -40,15 +41,29 @@ export default function App() {
   const [pendingCheckout, setPendingCheckout] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [checkedOut, setCheckedOut] = useState(false)
+  const [isAppLoading, setIsAppLoading] = useState(true)
 
-  // Fetch live products from Neon database on mount
+  // Fetch live products from Neon database on mount & show splash logo
   useEffect(() => {
     let isMounted = true
-    getProducts().then((data) => {
-      if (isMounted && data && data.length > 0) {
-        setProducts(data)
-      }
-    })
+    const startTime = Date.now()
+
+    getProducts()
+      .then((data) => {
+        if (isMounted && data && data.length > 0) {
+          setProducts(data)
+        }
+      })
+      .finally(() => {
+        const elapsed = Date.now() - startTime
+        const remaining = Math.max(0, 1800 - elapsed)
+        setTimeout(() => {
+          if (isMounted) {
+            setIsAppLoading(false)
+          }
+        }, remaining)
+      })
+
     return () => {
       isMounted = false
     }
@@ -320,6 +335,11 @@ export default function App() {
             onClose={() => setCheckoutOpen(false)}
             onSuccess={handleCheckoutSuccess}
           />
+
+          {/* Opening Splash Screen with Brand Logo & Neon status */}
+          {isAppLoading && (
+            <SplashScreen statusText="Connecting to Neon Cloud..." />
+          )}
         </View>
       </SafeAreaView>
     </SafeAreaProvider>

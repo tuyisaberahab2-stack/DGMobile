@@ -77,3 +77,6 @@ yarn-error.log
 .env
 .env.local
 .env.*.local
+*.apk
+android/app/src/main/assets/*.bundle
+android/app/src/main/assets/*.bundle.meta
